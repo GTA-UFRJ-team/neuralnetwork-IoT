@@ -1,10 +1,16 @@
-import time
 import pandas as pd
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, ConcatDataset
-from sklearn.model_selection import KFold
+
+from ray import tune, air
+from ray.air import session
+from ray.tune import CLIReporter
+from ray.tune.search.optuna import OptunaSearch
+from ray.tune.schedulers import ASHAScheduler
+
 from sklearn.preprocessing import MinMaxScaler
 
 class FeatureDataset(Dataset):
@@ -13,9 +19,6 @@ class FeatureDataset(Dataset):
 
         # read csv files
         df = pd.read_csv(file_name)
-
-        # remove the 5-tuple and non-numerical variables
-        #df = df.drop(["pkSeqID","flgs","proto","saddr","daddr","sport","dport","state","attack","category","subcategory","smac","dmac","soui","doui","sco","dco"], axis=1)
 
         # load row data into variables
         x_train = df.iloc[:, :-1].values
@@ -43,7 +46,7 @@ class NeuralNetwork(nn.Module):
     def __init__(self, device, n_features, n_labels, batch_size):
         super(NeuralNetwork, self).__init__()
 
-        self.hidden_size = 60 # hidden_layer_size
+        self.hidden_size = 50 # hidden_layer_size
         self.n_layers = 1 # n_layers
         self.input_size = n_features
         self.output_size = n_labels
@@ -72,29 +75,25 @@ class NeuralNetwork(nn.Module):
         #   h_0 = torch.randn(2*self.n_layers, self.batch_size, self.hidden_size).to(self.device)
         #   out, h_n = self.{rnn,gru}(x, (h_0, h_0))
 
-        self.lstm = nn.LSTM(input_size=self.input_size, hidden_size=self.hidden_size, num_layers=self.n_layers, batch_first=True, bidirectional=True)
-        self.fc = nn.Linear(in_features=2*self.hidden_size, out_features=self.hidden_size)
+        self.gru = nn.GRU(input_size=self.input_size, hidden_size=self.hidden_size, num_layers=self.n_layers, batch_first=True)
+        self.fc = nn.Linear(in_features=self.hidden_size, out_features=self.hidden_size)
         self.fc2 = nn.Linear(in_features=self.hidden_size, out_features=self.hidden_size)
         self.output = nn.Linear(in_features=self.hidden_size, out_features=self.output_size)
 
     def forward(self, x):
-        h_0 = torch.randn(2*self.n_layers, self.batch_size, self.hidden_size).to(self.device)
+        h_0 = torch.randn(self.n_layers, self.batch_size, self.hidden_size).to(self.device)
 
-        out, h_n = self.lstm(x, (h_0, h_0))
+        out, h_n = self.gru(x, h_0)
         out = self.fc(out)
         out = self.fc2(out)
-        #out = self.fc2(out)
-        #out = self.fc2(out)
         out = F.softmax(self.output(out), dim=2)
 
         return out
 
-def train_model(loader, epochs, batch_size, n_features, n_labels, device):
-
-    model = NeuralNetwork(device=device, n_features=n_features, n_labels=n_labels, batch_size=batch_size).to(device)
+def train_model(model, optimizer, loader, epochs, batch_size, n_features, n_labels, device):
 
     loss_func = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters())
+    training_loss = []
 
     for epoch in range(epochs):
         print(f"Starting epoch {epoch}", flush=True)
@@ -119,10 +118,11 @@ def train_model(loader, epochs, batch_size, n_features, n_labels, device):
 
             current_loss = loss.item()
 
-        print(f"Current Loss: {current_loss}", flush=True)
+        #print(f"Current Loss: {current_loss}", flush=True)
+        training_loss.append(current_loss)
         current_loss = 0.0
 
-    return model
+    return model, training_loss
 
 def test_model(model, loader, batch_size, n_features, device):
 
@@ -172,136 +172,74 @@ def test_model(model, loader, batch_size, n_features, device):
 
     return accuracy, test_loss, confusion_matrix, metrics
 
-def main():
+def objective(config):
+    
+    epochs=config["epochs"]
+    batch_size=config["batch_size"]
+    n_features=config["n_features"]
+    n_labels=config["n_labels"]
+    device=config["device"]
+    lr=config["lr"]
 
-    k_folds = 3
-    epochs = 200
-    n_features = 18
-    n_labels = 11
-    batch_size = 100
+    train_set = FeatureDataset('dataset_new/UNSW_2018_IoT_Botnet_Full5pc_Train_Small.csv')
+    test_set = FeatureDataset('dataset_new/UNSW_2018_IoT_Botnet_Full5pc_Test_Small.csv')
 
-    train_set = FeatureDataset('UNSW_2018_IoT_Botnet_Dataset_Balanced_Train_10M.csv')
-    test_set = FeatureDataset('dataset_temp/UNSW_2018_IoT_Botnet_Dataset_Reduced.csv')
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using {device} device")
-
-    save_model = 0
-    results = {}
-    kfold = KFold(n_splits=k_folds, shuffle=True)
-
-    training_time = 0
-    inference_time = 0
-
-    # Training start
-
-    if(device == "cuda"):
-        start = torch.cuda.Event(enable_timing=True)
-        start.record()
-    else:
-        start = time.time()
-
-    for fold, (train_ids, validation_ids) in enumerate(kfold.split(train_set)):
-        print(f"Fold {fold}\n", flush=True)
-
-        train_subsampler = torch.utils.data.SubsetRandomSampler(train_ids)
-        validation_subsampler = torch.utils.data.SubsetRandomSampler(validation_ids)
-
-        train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, sampler=train_subsampler)
-        validation_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, sampler=validation_subsampler)
-
-        model = train_model(train_loader, epochs, batch_size, n_features, n_labels, device)
-
-        accuracy, validation_loss, confusion_matrix, metrics = test_model(model, validation_loader, batch_size, n_features, device)
-
-        results[fold] = accuracy
-
-        print(f"Accuracy: {100*accuracy:>0.2f}%")
-        print("Average Loss: ", validation_loss)
-
-        for i in range(n_labels):
-            precision = confusion_matrix[i][i]/(sum(confusion_matrix[i])+1e-10)
-            recall = confusion_matrix[i][i]/(sum(row[i] for row in confusion_matrix)+1e-10)
-            metrics.insert(i, [precision, recall])
-
-        print("Precision and Recall by label: ")
-        print(f"{metrics}\n", flush=True)
-
-        if(accuracy > save_model):
-            save_model = accuracy
-            torch.save(model.state_dict(), 'model_tmp.pth')
-            #print("Model saved")
-
-    if(device == "cuda"):
-        end = torch.cuda.Event(enable_timing=True)
-        end.record()
-        torch.cuda.synchronize()
-        training_time = start.elapsed_time(end)/1000
-    else:
-        end = time.time()
-        training_time = end-start
-
-    # Training end
-
-
-    # Printing final training results
-
-    print(f"K-fold Cross Validation Results for {k_folds} folds: ")
-
-    final_sum = 0.0
-    for key, value in results.items():
-        print(f"Fold {key}: {100*value:>0.2f}%")
-        final_sum += value
-
-    print(f"Average: {(100*final_sum/len(results.items())):>0.2f}%")
-    print(f"Total training time: {training_time} seconds", flush=True)
-
-
-    # Testing start
-
-    best_model = NeuralNetwork(device=device, n_features=n_features, n_labels=n_labels, batch_size=batch_size).to(device)
-    best_model.load_state_dict(torch.load('model_tmp.pth'))
-    best_model.eval()
-
+    train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size)
     test_loader = torch.utils.data.DataLoader(test_set, batch_size=batch_size)
 
-    if(device == "cuda"):
-        start = torch.cuda.Event(enable_timing=True)
-        start.record()
-    else:
-        start = time.time()
+    model = NeuralNetwork(device=device, n_features=n_features, n_labels=n_labels, batch_size=batch_size).to(device)
+    optimizer = torch.optim.Adam(
+        model.parameters(),
+        lr=lr
+    )
 
-    accuracy, test_loss, confusion_matrix, metrics = test_model(best_model, test_loader, batch_size, n_features, device)
+    trained_model, training_loss = train_model(model, optimizer, train_loader, epochs=epochs, batch_size=batch_size, n_features=n_features, n_labels=n_labels, device=device)
+    accuracy, test_loss, confusion_matrix, metrics = test_model(trained_model, test_loader, batch_size=batch_size, n_features=n_features, device=device)
 
-    if(device == "cuda"):
-        end = torch.cuda.Event(enable_timing=True)
-        end.record()
-        torch.cuda.synchronize()
-        inference_time = start.elapsed_time(end)/1000
-    else:
-        end = time.time()
-        inference_time = end-start
-
-    # Testing end
-
-
-    # Printing final testing results
-
-    print("\nTesting results:")
-    print(f"Accuracy: {100*accuracy:>0.2f}%")
-    print(f"Average: {test_loss}")
-
-    for i in range(n_labels):
+    for i in range(11):
         precision = confusion_matrix[i][i]/(sum(confusion_matrix[i])+1e-10)
         recall = confusion_matrix[i][i]/(sum(row[i] for row in confusion_matrix)+1e-10)
         metrics.insert(i, [precision, recall])
 
-    print("Precision and Recall by label: ")
-    print(f"{metrics}\n", flush=True)
+    session.report({
+        "mean_accuracy": accuracy, 
+        "metrics": metrics,
+        "training_loss": training_loss,
+        "test_loss": test_loss
+    })
 
-    print(f"Total inference time: {inference_time} seconds")
-    print(f"\nDone!")
+search_space = {
+        "lr": tune.grid_search([1e-3]),
+        "batch_size": tune.grid_search([100]),
+        "epochs": tune.grid_search([5,10]),
+        "device": "cuda" if torch.cuda.is_available() else "cpu",
+        "n_features": 35,
+        "n_labels": 11
+}
 
-if __name__ == '__main__':
-    print("Starting!", flush=True)
-    main()
+#algo = OptunaSearch()
+reporter = CLIReporter(max_report_frequency=9999999, print_intermediate_tables=False)
+scheduler = ASHAScheduler(
+        grace_period=1,
+        reduction_factor=2
+)
+
+tuner = tune.Tuner(
+    tune.with_resources(
+        tune.with_parameters(objective),
+        resources = {"cpu": 6, "gpu": 1}
+    ),
+    tune_config=tune.TuneConfig(
+        metric="test_loss",
+        mode="min",
+        scheduler=scheduler,
+    ),
+    run_config=air.RunConfig(
+        progress_reporter=reporter
+    ),
+    param_space=search_space,
+)
+
+results = tuner.fit()
+
+print("Best config is:", results.get_best_result().config)
