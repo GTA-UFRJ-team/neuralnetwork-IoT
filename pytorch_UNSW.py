@@ -5,12 +5,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, ConcatDataset
 
+import ray
 from ray import tune, air
 from ray.air import session
 from ray.tune import CLIReporter
 from ray.tune.search.optuna import OptunaSearch
 from ray.tune.schedulers import ASHAScheduler
 
+from sklearn.model_selection import KFold
 from sklearn.preprocessing import MinMaxScaler
 
 class FeatureDataset(Dataset):
@@ -43,49 +45,107 @@ class FeatureDataset(Dataset):
 
 class NeuralNetwork(nn.Module):
 
-    def __init__(self, device, n_features, n_labels, batch_size):
+    def __init__(self, device, n_features, n_labels, batch_size, architecture):
         super(NeuralNetwork, self).__init__()
 
-        self.hidden_size = 50 # hidden_layer_size
+        self.hidden_size = 100 # hidden_layer_size
         self.n_layers = 1 # n_layers
         self.input_size = n_features
         self.output_size = n_labels
         self.batch_size = batch_size
         self.device = device
+        self.architecture = architecture
 
-        # RNN/GRU input:
-        #   self.{rnn,gru} = nn.{RNN,GRU}(input_size=self.input_size, hidden_size=self.hidden_size, num_layers=self.n_layers, batch_first=True)
-        #   h_0 = torch.randn(self.n_layers, self.batch_size, self.hidden_size).to(self.device)
-        #   out, h_n = self.{rnn,gru}(x, h_0)
+        if(architecture == "Dense1" or architecture == "Dense2"):
+            self.hidden_size = 100
 
-        # BRNN/BGRU input:
-        #   self.{brnn,bgru} = nn.{RNN,GRU}(input_size=self.input_size, hidden_size=self.hidden_size, num_layers=self.n_layers, batch_first=True, bidirectional=True)
-        #   Note: in_features of the following layer must be doubled
-        #   h_0 = torch.randn(2*self.n_layers, self.batch_size, self.hidden_size).to(self.device)
-        #   out, h_n = self.{rnn,gru}(x, h_0)
+            self.fc = nn.Linear(in_features=self.input_size, out_features=self.hidden_size)
+            self.fc2 = nn.Linear(in_features=self.hidden_size, out_features=self.hidden_size)
 
-        # LSTM input:
-        #   self.lstm = nn.LSTM(input_size=self.input_size, hidden_size=self.hidden_size, num_layers=self.n_layers, batch_first=True)
-        #   h_0 = torch.randn(self.n_layers, self.batch_size, self.hidden_size).to(self.device)
-        #   out, h_n = self.{rnn,gru}(x, (h_0, h_0))
+        elif(architecture == "RNN1" or architecture == "RNN2"):
+            if(architecture == "RNN1"):
+                self.hidden_size = 60
+            if(architecture == "RNN2"):
+                self.hidden_size = 100
 
-        # BLSTM input:
-        #   self.blstm = nn.LSTM(input_size=self.input_size, hidden_size=self.hidden_size, num_layers=self.n_layers, batch_first=True, bidirectional=True)
-        #   Note: in_features of the following layer must be doubled
-        #   h_0 = torch.randn(2*self.n_layers, self.batch_size, self.hidden_size).to(self.device)
-        #   out, h_n = self.{rnn,gru}(x, (h_0, h_0))
+            self.rnn = nn.RNN(input_size=self.input_size, hidden_size=self.hidden_size, num_layers=self.n_layers, batch_first=True)
 
-        self.gru = nn.GRU(input_size=self.input_size, hidden_size=self.hidden_size, num_layers=self.n_layers, batch_first=True)
-        self.fc = nn.Linear(in_features=self.hidden_size, out_features=self.hidden_size)
-        self.fc2 = nn.Linear(in_features=self.hidden_size, out_features=self.hidden_size)
+        elif(architecture == "RNND"):
+            self.hidden_size = 100
+
+            self.rnn = nn.RNN(input_size=self.input_size, hidden_size=self.hidden_size, num_layers=self.n_layers, batch_first=True)
+            self.fc = nn.Linear(in_features=self.hidden_size, out_features=self.hidden_size)
+
+        elif(architecture == "LSTM1"):
+
+            self.hidden_size = 32
+            self.n_layers = 2
+
+            self.lstm = nn.LSTM(input_size=self.input_size, hidden_size=self.hidden_size, num_layers=self.n_layers, batch_first=True)
+
+        elif(architecture == "LSTMD"):
+
+            self.hidden_size = 128
+            self.n_layers = 2
+
+            self.lstm = nn.LSTM(input_size=self.input_size, hidden_size=self.hidden_size, num_layers=self.n_layers, batch_first=True)
+
+            self.hidden_size = 32
+            self.last_size = 128
+
+            self.fc = nn.Linear(in_features=self.last_size, out_features=self.hidden_size)
+
+            self.hidden_size = 10
+            self.last_size = 32
+
+            self.fc2 = nn.Linear(in_features=self.last_size, out_features=self.hidden_size)
+
+        elif(architecture == "BLSTM1"):
+
+            self.hidden_size = 12
+
+            self.blstm = nn.LSTM(input_size=self.input_size, hidden_size=self.hidden_size, num_layers=self.n_layers, batch_first=True, bidirectional=True)
+            self.hidden_size = 24 
+
         self.output = nn.Linear(in_features=self.hidden_size, out_features=self.output_size)
-
+        
     def forward(self, x):
-        h_0 = torch.randn(self.n_layers, self.batch_size, self.hidden_size).to(self.device)
+        
+        if(self.architecture in ("Dense1", "Dense2", "RNN1", "RNN2", "RNND", "LSTM1", "LSTMD")):
+            if(self.architecture == "LSTMD"):
+                self.hidden_size = 128
 
-        out, h_n = self.gru(x, h_0)
-        out = self.fc(out)
-        out = self.fc2(out)
+            h_0 = torch.randn(self.n_layers, self.batch_size, self.hidden_size).to(self.device)
+
+            if(self.architecture in ("Dense1", "Dense2")):            
+                out = self.fc(x)
+                out = self.fc2(out)
+                out = self.fc2(out)
+
+                if(self.architecture == "Dense2"):
+                    out = self.fc2(out)
+
+            if(self.architecture in ("RNN1", "RNN2", "RNND")):
+                out, h_n = self.rnn(x, h_0)
+
+                if(self.architecture == "RNND"):
+                    out = self.fc(out)
+                    out = self.fc(out)
+                    out = self.fc(out)
+
+            if(self.architecture in ("LSTM1", "LSTMD")):
+                out, h_n = self.lstm(x, (h_0, h_0))
+
+                if(self.architecture == "LSTMD"):
+                    out = self.fc(out)
+                    out = self.fc2(out)
+
+        elif (self.architecture in ("BLSTM1")):
+            self.hidden_size = 12
+
+            h_0 = torch.randn(2*self.n_layers, self.batch_size, self.hidden_size).to(self.device)
+            out, h_n = self.blstm(x, (h_0, h_0))
+
         out = F.softmax(self.output(out), dim=2)
 
         return out
@@ -118,7 +178,7 @@ def train_model(model, optimizer, loader, epochs, batch_size, n_features, n_labe
 
             current_loss = loss.item()
 
-        #print(f"Current Loss: {current_loss}", flush=True)
+        print(f"Current Loss: {current_loss}", flush=True)
         training_loss.append(current_loss)
         current_loss = 0.0
 
@@ -180,66 +240,124 @@ def objective(config):
     n_labels=config["n_labels"]
     device=config["device"]
     lr=config["lr"]
+    architecture=config["architecture"]
 
-    train_set = FeatureDataset('dataset_new/UNSW_2018_IoT_Botnet_Full5pc_Train_Small.csv')
-    test_set = FeatureDataset('dataset_new/UNSW_2018_IoT_Botnet_Full5pc_Test_Small.csv')
+    save_model = 0
+    kfold = KFold(n_splits= 5, shuffle=True)
 
-    train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size)
+    train_set = FeatureDataset('UNSW_2018_IoT_Botnet_Full5pc_Train.csv')
+    test_set = FeatureDataset('UNSW_2018_IoT_Botnet_Full5pc_Test.csv')
+
+    for fold, (train_ids, validation_ids) in enumerate(kfold.split(train_set)):
+        print(f"Fold {fold}\n", flush=True)
+
+        train_subsampler = torch.utils.data.SubsetRandomSampler(train_ids)
+        validation_subsampler = torch.utils.data.SubsetRandomSampler(validation_ids)
+
+        train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, sampler=train_subsampler)
+        validation_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, sampler=validation_subsampler)
+
+        model = NeuralNetwork(device=device, n_features=n_features, n_labels=n_labels, batch_size=batch_size, architecture=architecture).to(device)
+        optimizer = torch.optim.Adam(
+            model.parameters(),
+            lr=lr
+        )
+
+        trained_model, training_loss = train_model(model, optimizer, train_loader, epochs=epochs, batch_size=batch_size, n_features=n_features, n_labels=n_labels, device=device)
+        accuracy, validation_loss, confusion_matrix, metrics = test_model(trained_model, validation_loader, batch_size=batch_size, n_features=n_features, device=device)
+
+        for i in range(n_labels):
+            precision = confusion_matrix[i][i]/(sum(confusion_matrix[i])+1e-10)
+            recall = confusion_matrix[i][i]/(sum(row[i] for row in confusion_matrix)+1e-10)
+            metrics.insert(i, [precision, recall])
+
+        if(accuracy > save_model):
+            save_model = accuracy
+            torch.save(model.state_dict(), 'model_tmp.pth')
+
+        session.report({
+            "fold": fold,
+            "mean_accuracy": accuracy, 
+            "metrics": metrics,
+            "training_loss": training_loss,
+            "validation_loss": validation_loss
+    })
+
+    best_model = NeuralNetwork(device=device, n_features=n_features, n_labels=n_labels, batch_size=batch_size, architecture=architecture).to(device)
+    best_model.load_state_dict(torch.load('model_tmp.pth'))
+    best_model.eval()
+
     test_loader = torch.utils.data.DataLoader(test_set, batch_size=batch_size)
 
-    model = NeuralNetwork(device=device, n_features=n_features, n_labels=n_labels, batch_size=batch_size).to(device)
-    optimizer = torch.optim.Adam(
-        model.parameters(),
-        lr=lr
-    )
+    accuracy, test_loss, confusion_matrix, metrics = test_model(best_model, test_loader, batch_size, n_features, device)
 
-    trained_model, training_loss = train_model(model, optimizer, train_loader, epochs=epochs, batch_size=batch_size, n_features=n_features, n_labels=n_labels, device=device)
-    accuracy, test_loss, confusion_matrix, metrics = test_model(trained_model, test_loader, batch_size=batch_size, n_features=n_features, device=device)
-
-    for i in range(11):
+    for i in range(n_labels):
         precision = confusion_matrix[i][i]/(sum(confusion_matrix[i])+1e-10)
         recall = confusion_matrix[i][i]/(sum(row[i] for row in confusion_matrix)+1e-10)
         metrics.insert(i, [precision, recall])
 
-    session.report({
-        "mean_accuracy": accuracy, 
-        "metrics": metrics,
-        "training_loss": training_loss,
-        "test_loss": test_loss
-    })
+    if(accuracy > save_model):
+        save_model = accuracy
+        torch.save(model.state_dict(), 'model_tmp.pth')
 
-search_space = {
-        "lr": tune.grid_search([1e-3]),
-        "batch_size": tune.grid_search([100]),
-        "epochs": tune.grid_search([5,10]),
+    print(f"\nCurrent grid (epochs:{epochs}, batch size:{batch_size}, lr:{lr}, architecture:{architecture}) testing results:")
+    print(f"Accuracy: {100*accuracy:>0.2f}%")
+    print(f"Average: {test_loss}")
+
+    for i in range(n_labels):
+        precision = confusion_matrix[i][i]/(sum(confusion_matrix[i])+1e-10)
+        recall = confusion_matrix[i][i]/(sum(row[i] for row in confusion_matrix)+1e-10)
+        metrics.insert(i, [precision, recall])
+
+    print("Precision and Recall by label: ")
+    print(f"{metrics}\n", flush=True)
+
+def main():
+    ray.init(log_to_driver=False)
+    #config = configparser.ConfigParser()
+    #config.read('config.txt')
+    #architecture = config['config']['architecture']
+    #training_dataset = config['config']['training_dataset']
+    #test_dataset = config['config']['test_dataset']
+    #cross_validation = config['config']['cross_validation']
+
+    search_space = {
+        "lr": tune.grid_search([5e-5,1e-5]),
+        "batch_size": tune.grid_search([32,64,128,1000]),
+        "epochs": tune.grid_search([5,10,50,100]),
         "device": "cuda" if torch.cuda.is_available() else "cpu",
         "n_features": 35,
-        "n_labels": 11
-}
+        "n_labels": 11,
+        "architecture": tune.grid_search(["Dense1","Dense2","RNN1","RNN2","RNND","LSTM1","LSTMD","BLSTM1"])
+    }
 
-#algo = OptunaSearch()
-reporter = CLIReporter(max_report_frequency=9999999, print_intermediate_tables=False)
-scheduler = ASHAScheduler(
+    reporter = CLIReporter(max_report_frequency=9999999, print_intermediate_tables=False)
+    scheduler = ASHAScheduler(
         grace_period=1,
         reduction_factor=2
-)
+    )
 
-tuner = tune.Tuner(
-    tune.with_resources(
-        tune.with_parameters(objective),
-        resources = {"cpu": 6, "gpu": 1}
-    ),
-    tune_config=tune.TuneConfig(
-        metric="test_loss",
-        mode="min",
-        scheduler=scheduler,
-    ),
-    run_config=air.RunConfig(
-        progress_reporter=reporter
-    ),
-    param_space=search_space,
-)
+    tuner = tune.Tuner(
+        tune.with_resources(
+            tune.with_parameters(objective),
+            resources = {"cpu": 6, "gpu": 1}
+        ),
+        tune_config=tune.TuneConfig(
+            metric="mean_accuracy",
+            mode="max",
+            #scheduler=scheduler,
+        ),
+        run_config=air.RunConfig(
+            progress_reporter=reporter,
+            log_to_file='tuning_test_records.txt'
+        ),
+        param_space=search_space
+    )
 
-results = tuner.fit()
+    results = tuner.fit()
 
-print("Best config is:", results.get_best_result().config)
+    print("Best config is:", results.get_best_result().config)
+
+if __name__ == '__main__':
+    print("Starting!", flush=True)
+    main()
