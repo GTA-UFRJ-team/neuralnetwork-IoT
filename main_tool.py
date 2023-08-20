@@ -176,15 +176,10 @@ def process_csv_file(csv_file_path):
 
         test_set = FeatureDataset(csv_file_path)
 
-        #time.sleep(5)
-
         test_loader = torch.utils.data.DataLoader(test_set, batch_size=1, drop_last=True)
         network_info = test_set.get_netinfo()
 
-        quantize = False
-        torch.set_num_threads(1)
-
-        if quantize:
+        if quantize == "True":
             qconfig_mapping = (QConfigMapping()
             .set_object_type(nn.LSTM, default_dynamic_qconfig)
             .set_object_type(nn.Linear, default_dynamic_qconfig)
@@ -195,18 +190,18 @@ def process_csv_file(csv_file_path):
 
             quantized_model = convert_fx(prepared_model)
 
-        s1 = time.time()
-        prediction_list = test_model(best_model, test_loader, device)
-        elapsed1 = time.time() - s1
-        print("Single-threaded - elapsed time (seconds) ", elapsed1)
-        print("Processing concluded\n")
-
-        if quantize:
-            s2 = time.time()
+            s = time.time()
             prediction_list = test_model(quantized_model, test_loader, device)
-            elapsed2 = time.time() - s2
-            print("Quantized - elapsed time (seconds) ", elapsed2)
+            elapsed = time.time() - s
+            print("Quantized elapsed time (seconds) ", elapsed)
             print("Quantized processing concluded\n")
+
+        else:
+            s = time.time()
+            prediction_list = test_model(best_model, test_loader, device)
+            elapsed = time.time() - s
+            print("Elapsed time (seconds) ", elapsed)
+            print("Processing concluded\n")
 
         mapping = {1: 'DoS-TCP', 2: 'DoS-UDP', 3: 'DoS-HTTP', 4: 'DDoS-TCP', 5: 'DDoS-UDP', 6: 'DDoS-HTTP', 7: 'Keylogging', 8: 'Data Exfiltration', 9: 'OS Fingerprinting', 10: 'Service Scan'}
 
