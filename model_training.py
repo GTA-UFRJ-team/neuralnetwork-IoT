@@ -4,13 +4,12 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import Dataset, ConcatDataset
+from torch.utils.data import Dataset
 
 import ray
 from ray import tune, air
 from ray.air import session
 from ray.tune import CLIReporter
-from ray.tune.search.optuna import OptunaSearch
 from ray.tune.schedulers import ASHAScheduler
 
 from sklearn.model_selection import KFold
@@ -57,7 +56,7 @@ class NeuralNetwork(nn.Module):
         self.device = device
         self.architecture = architecture
 
-        if(architecture == "Dense1" or architecture == "Dense2"):
+        if(architecture == "MLP1" or architecture == "MLP2"):
             self.hidden_size = 100
 
             self.fc = nn.Linear(in_features=self.input_size, out_features=self.hidden_size)
@@ -112,18 +111,18 @@ class NeuralNetwork(nn.Module):
         
     def forward(self, x):
         
-        if(self.architecture in ("Dense1", "Dense2", "RNN1", "RNN2", "RNND", "LSTM1", "LSTMD")):
+        if(self.architecture in ("MLP1", "MLP2", "RNN1", "RNN2", "RNND", "LSTM1", "LSTMD")):
             if(self.architecture == "LSTMD"):
                 self.hidden_size = 128
 
             h_0 = torch.randn(self.n_layers, self.batch_size, self.hidden_size).to(self.device)
 
-            if(self.architecture in ("Dense1", "Dense2")):            
+            if(self.architecture in ("MLP1", "MLP2")):            
                 out = self.fc(x)
                 out = self.fc2(out)
                 out = self.fc2(out)
 
-                if(self.architecture == "Dense2"):
+                if(self.architecture == "MLP2"):
                     out = self.fc2(out)
 
             if(self.architecture in ("RNN1", "RNN2", "RNND")):
