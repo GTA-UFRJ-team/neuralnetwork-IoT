@@ -8,14 +8,14 @@ df = df.rename(columns={'StartTime': 'stime', 'Flgs': 'flgs', 'Proto': 'proto', 
 
 
 dt_now = date.today()
-df['stime'] = pd.to_datetime(df['stime'])
+df['stime'] = pd.to_datetime(df['stime'], format='%H:%M:%S.%f')
 df['datetime'] = pd.to_datetime(dt_now) + pd.to_timedelta(df['stime'].dt.strftime('%H:%M:%S.%f'))
 
 df['unix_timestamp'] = (df['datetime'] - pd.Timestamp("1970-01-01")) // pd.Timedelta('1ms')
 df['unix_timestamp'] += df['stime'].dt.microsecond // 1000
 df['stime'] = df['unix_timestamp']
 
-df['ltime'] = pd.to_datetime(df['ltime'])
+df['ltime'] = pd.to_datetime(df['ltime'], format='%H:%M:%S.%f')
 df['datetime'] = pd.to_datetime(dt_now) + pd.to_timedelta(df['ltime'].dt.strftime('%H:%M:%S.%f'))
 
 df['unix_timestamp'] = (df['datetime'] - pd.Timestamp("1970-01-01")) // pd.Timedelta('1ms')
