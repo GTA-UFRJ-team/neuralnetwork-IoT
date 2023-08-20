@@ -242,13 +242,13 @@ def objective(config):
     device=config["device"]
     lr=config["lr"]
     architecture=config["architecture"]
-    dataset_loc=config["dataset"]
+    dataset=config["dataset"]
 
     save_model = 0
     kfold = KFold(n_splits= 5, shuffle=True)
 
-    train_set = FeatureDataset(dataset_loc + 'UNSW_2018_IoT_Botnet_Full5pc_Train_Small.csv')
-    test_set = FeatureDataset(dataset_loc + 'UNSW_2018_IoT_Botnet_Full5pc_Test_Small.csv')
+    train_set = FeatureDataset(dataset['dataset_folder'] + dataset['train_dataset_name'])
+    test_set = FeatureDataset(dataset['dataset_folder'] + dataset['test_dataset_name'])
 
     for fold, (train_ids, validation_ids) in enumerate(kfold.split(train_set)):
         print(f"Fold {fold}\n", flush=True)
@@ -332,7 +332,7 @@ def main():
         "n_features": 35,
         "n_labels": 11,
         "architecture": tune.grid_search(hyperparameters['architecture'].strip('][').split(',')),
-        "dataset": dataset['dataset_location']
+        "dataset": dataset
     }
 
     reporter = CLIReporter(max_report_frequency=9999999, print_intermediate_tables=False)

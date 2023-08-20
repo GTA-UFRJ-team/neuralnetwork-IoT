@@ -1,3 +1,4 @@
+import configparser
 import copy
 import time
 import pandas as pd
@@ -210,10 +211,10 @@ def process_csv_file(csv_file_path):
 
         mapping = {1: 'DoS-TCP', 2: 'DoS-UDP', 3: 'DoS-HTTP', 4: 'DDoS-TCP', 5: 'DDoS-UDP', 6: 'DDoS-HTTP', 7: 'Keylogging', 8: 'Data Exfiltration', 9: 'OS Fingerprinting', 10: 'Service Scan'}
 
-        #for index, prediction in enumerate(prediction_list):
-            #if prediction.item() != 0:
-                #print("Detectado ataque de tipo:", mapping[prediction.item()])
-                #print(f"Dados do ataque:\n IP de origem- {network_info[index][0]}\n IP de destino- {network_info[index][1]}\n Porta de origem- {network_info[index][2]}\n Porta de destino- {network_info[index][3]}\n Protocolo- {network_info[index][4]}\n")
+        for index, prediction in enumerate(prediction_list):
+            if prediction.item() != 0:
+                print("Detectado ataque de tipo:", mapping[prediction.item()])
+                print(f"Dados do ataque:\n IP de origem- {network_info[index][0]}\n IP de destino- {network_info[index][1]}\n Porta de origem- {network_info[index][2]}\n Porta de destino- {network_info[index][3]}\n Protocolo- {network_info[index][4]}\n")
 
     except pd.errors.EmptyDataError:
         print("Error: The CSV file is empty or has no valid data.")
@@ -247,21 +248,24 @@ class MyHandler(FileSystemEventHandler):
 
 if __name__ == '__main__':
 
-    print("Starting classifier")
-    epochs=5
-    batch_size=32
+    config = configparser.ConfigParser()
+    config.read('config.txt')
+
+    model = config['model']
+    quantization = config['quantization']
+
     n_features=35
     n_labels=11
-    quantize=False
     device="cpu"
+    architecture=model['architecture']
+
+    quantize=quantization['quantize']
     if not quantize:
         device="cuda" if torch.cuda.is_available() else "cpu"
-    lr=1e-3
-    architecture="LSTM1"
 
     best_model = NeuralNetwork(device=device, n_features=n_features, n_labels=n_labels, batch_size=1, architecture=architecture).to(device)
 
-    best_model.load_state_dict(torch.load('models/model_lstm1.pth', map_location=torch.device('cpu')))
+    best_model.load_state_dict(torch.load(model['model_location'] + 'model_' + architecture.lower() + '.pth', map_location=torch.device('cpu')))
     best_model.eval()
 
     print("Starting observer")

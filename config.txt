@@ -1,15 +1,38 @@
+##Training config
+
 [dataset]
-dataset_location = /root/neuralnetwork-IoT/dataset/
+#Folder containing the training and testing datasets
+dataset_folder = /root/neuralnetwork-IoT/dataset/
+#Dataset used for training and validation
+train_dataset_name = UNSW_2018_IoT_Botnet_Full5pc_Train.csv
+#Dataset used for testing
+test_dataset_name = UNSW_2018_IoT_Botnet_Full5pc_Test.csv
 
 [hyperparameters]
+#Learning rate values used during tuning
 lr = [1e-3,5e-4,1e-4]
+#Batch size values used during tuning
 batch_size = [32,64,100,128,1000]
+#Epoch values used during tuning
 epochs = [5,10,100]
+#Neural network architectures used during tuning; accepted values are: MLP1,MLP2,RNN1,RNN2,RNND,LSTM1,LSTMD,BLSTM1
 architecture = [Dense1,Dense2,RNN1,RNN2,RNND,LSTM1,LSTMD,BLSTM1]
 
-[quantization]
-quantize = True
-
 [pc-specs]
+#Number of CPU cores used during training
 num_cpu = 4
+#Number of GPUs used during training
 num_gpu = 0
+
+
+##Tool config
+
+[quantization]
+#Obtain results using PTQ (Post-Training Quantization) on the selected model
+quantize = False
+
+[model]
+#Folder containing the classification model
+model_location = /root/neuralnetwork-IoT/models/
+#Neural network architecture of the classification model; accepted values are: MLP1,MLP2,RNN1,RNN2,RNND,LSTM1,LSTMD,BLSTM1
+architecture = RNN1
