@@ -1,3 +1,4 @@
+import configparser
 import pandas as pd
 
 import torch
@@ -241,12 +242,13 @@ def objective(config):
     device=config["device"]
     lr=config["lr"]
     architecture=config["architecture"]
+    dataset_loc=config["dataset"]
 
     save_model = 0
     kfold = KFold(n_splits= 5, shuffle=True)
 
-    train_set = FeatureDataset('UNSW_2018_IoT_Botnet_Full5pc_Train.csv')
-    test_set = FeatureDataset('UNSW_2018_IoT_Botnet_Full5pc_Test.csv')
+    train_set = FeatureDataset(dataset_loc + 'UNSW_2018_IoT_Botnet_Full5pc_Train_Small.csv')
+    test_set = FeatureDataset(dataset_loc + 'UNSW_2018_IoT_Botnet_Full5pc_Test_Small.csv')
 
     for fold, (train_ids, validation_ids) in enumerate(kfold.split(train_set)):
         print(f"Fold {fold}\n", flush=True)
@@ -314,21 +316,23 @@ def objective(config):
 
 def main():
     ray.init(log_to_driver=False)
-    #config = configparser.ConfigParser()
-    #config.read('config.txt')
-    #architecture = config['config']['architecture']
-    #training_dataset = config['config']['training_dataset']
-    #test_dataset = config['config']['test_dataset']
-    #cross_validation = config['config']['cross_validation']
+    config = configparser.ConfigParser()
+    config.read('config.txt')
+    
+    hyperparameters = config['hyperparameters']
+    dataset = config['dataset']
+    pc_specs = config['pc-specs']
 
     search_space = {
-        "lr": tune.grid_search([5e-5,1e-5]),
-        "batch_size": tune.grid_search([32,64,128,1000]),
-        "epochs": tune.grid_search([5,10,50,100]),
-        "device": "cuda" if torch.cuda.is_available() else "cpu",
+        "lr": tune.grid_search(list(map(float, hyperparameters['lr'].strip('][').split(',')))),
+        "batch_size": tune.grid_search(list(map(int, hyperparameters['batch_size'].strip('][').split(',')))),
+        "epochs": tune.grid_search(list(map(int, hyperparameters['epochs'].strip('][').split(',')))),
+        #"device": "cuda" if torch.cuda.is_available() else "cpu",
+        "device": "cpu",
         "n_features": 35,
         "n_labels": 11,
-        "architecture": tune.grid_search(["Dense1","Dense2","RNN1","RNN2","RNND","LSTM1","LSTMD","BLSTM1"])
+        "architecture": tune.grid_search(hyperparameters['architecture'].strip('][').split(',')),
+        "dataset": dataset['dataset_location']
     }
 
     reporter = CLIReporter(max_report_frequency=9999999, print_intermediate_tables=False)
@@ -340,7 +344,7 @@ def main():
     tuner = tune.Tuner(
         tune.with_resources(
             tune.with_parameters(objective),
-            resources = {"cpu": 6, "gpu": 1}
+            resources = {"cpu": pc_specs['num_cpu'], "gpu": pc_specs['num_gpu']}
         ),
         tune_config=tune.TuneConfig(
             metric="mean_accuracy",

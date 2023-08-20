@@ -1,0 +1,15 @@
+[dataset]
+dataset_location = /root/neuralnetwork-IoT/dataset/
+
+[hyperparameters]
+lr = [1e-3,5e-4,1e-4]
+batch_size = [32,64,100,128,1000]
+epochs = [5,10,100]
+architecture = [Dense1,Dense2,RNN1,RNN2,RNND,LSTM1,LSTMD,BLSTM1]
+
+[quantization]
+quantize = True
+
+[pc-specs]
+num_cpu = 4
+num_gpu = 0
