@@ -10,7 +10,7 @@ rm current_analysis/treated_data.csv
 rm old_data/*
 rm detection_results.txt
 
-sleep 10
+sleep 20
 
 nohup python3 main_tool.py > detection_results.txt &
 
