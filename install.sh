@@ -27,3 +27,5 @@ cd dataset
 wget https://gta.ufrj.br/~chagas/UNSW_2018_IoT_Botnet_Full5pc_Train_Small.csv
 wget https://gta.ufrj.br/~chagas/UNSW_2018_IoT_Botnet_Full5pc_Test_Small.csv
 cd ..
+
+echo DL-SAFE installation complete

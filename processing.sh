@@ -10,6 +10,8 @@ rm current_analysis/treated_data.csv
 rm old_data/*
 rm detection_results.txt
 
+sleep 10
+
 nohup python3 main_tool.py > detection_results.txt &
 
 while true; do
@@ -28,5 +30,3 @@ while true; do
 
 	((iteration++))
 done
-
-
