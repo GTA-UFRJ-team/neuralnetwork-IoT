@@ -211,10 +211,6 @@ def test_model(model, loader, batch_size, n_features, device):
             y = torch.flatten(y)
             pred = torch.squeeze(pred)
 
-            #total += y.size(0)
-            #_, predicted = torch.max(pred.data, 1)
-            #correct += (predicted == y).sum().item()
-
             prediction_list = pred.argmax(1).tolist()
             y_list = y.tolist()
 
@@ -326,8 +322,7 @@ def main():
         "lr": tune.grid_search(list(map(float, hyperparameters['lr'].strip('][').split(',')))),
         "batch_size": tune.grid_search(list(map(int, hyperparameters['batch_size'].strip('][').split(',')))),
         "epochs": tune.grid_search(list(map(int, hyperparameters['epochs'].strip('][').split(',')))),
-        #"device": "cuda" if torch.cuda.is_available() else "cpu",
-        "device": "cpu",
+        "device": "cuda" if torch.cuda.is_available() else "cpu",
         "n_features": 35,
         "n_labels": 11,
         "architecture": tune.grid_search(hyperparameters['architecture'].strip('][').split(',')),

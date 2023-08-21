@@ -179,7 +179,7 @@ def process_csv_file(csv_file_path):
         test_loader = torch.utils.data.DataLoader(test_set, batch_size=1, drop_last=True)
         network_info = test_set.get_netinfo()
 
-        if quantize == "True":
+        if quantize == "True" or "true":
             qconfig_mapping = (QConfigMapping()
             .set_object_type(nn.LSTM, default_dynamic_qconfig)
             .set_object_type(nn.Linear, default_dynamic_qconfig)
@@ -254,7 +254,7 @@ if __name__ == '__main__':
     architecture=model['architecture']
 
     quantize=quantization['quantize']
-    if not quantize:
+    if quantize == "False" or "false":
         device="cuda" if torch.cuda.is_available() else "cpu"
 
     best_model = NeuralNetwork(device=device, n_features=n_features, n_labels=n_labels, batch_size=1, architecture=architecture).to(device)

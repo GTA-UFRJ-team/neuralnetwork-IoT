@@ -16,7 +16,7 @@ batch_size = [32,64,100,128,1000]
 #Epoch values used during tuning
 epochs = [5,10,100]
 #Neural network architectures used during tuning; accepted values are: MLP1,MLP2,RNN1,RNN2,RNND,LSTM1,LSTMD,BLSTM1
-architecture = [Dense1,Dense2,RNN1,RNN2,RNND,LSTM1,LSTMD,BLSTM1]
+architecture = [MLP1,MLP2,RNN1,RNN2,RNND,LSTM1,LSTMD,BLSTM1]
 
 [pc-specs]
 #Number of CPU cores used during training
