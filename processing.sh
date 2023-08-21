@@ -13,9 +13,6 @@ rm detection_results.txt
 nohup python3 main_tool.py > detection_results.txt &
 
 while true; do
-	#mv argus_data.out current_analysis/
-	#cd current_analysis/
-
 	ra -r argus_data.out -s stime flgs proto saddr sport daddr dport pkts bytes state ltime seq dur mean stddev sum min max spkts dpkts sbytes dbytes rate srate drate -c , > argus_data.csv	
 	cd current_analysis/
 	python3 csv_processing.py

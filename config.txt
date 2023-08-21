@@ -4,9 +4,9 @@
 #Folder containing the training and testing datasets
 dataset_folder = /root/neuralnetwork-IoT/dataset/
 #Dataset used for training and validation
-train_dataset_name = UNSW_2018_IoT_Botnet_Full5pc_Train.csv
+train_dataset_name = UNSW_2018_IoT_Botnet_Full5pc_Train_Small.csv
 #Dataset used for testing
-test_dataset_name = UNSW_2018_IoT_Botnet_Full5pc_Test.csv
+test_dataset_name = UNSW_2018_IoT_Botnet_Full5pc_Test_Small.csv
 
 [hyperparameters]
 #Learning rate values used during tuning
