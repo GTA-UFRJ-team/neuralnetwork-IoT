@@ -207,8 +207,7 @@ def process_csv_file(csv_file_path):
 
         for index, prediction in enumerate(prediction_list):
             if prediction.item() != 0:
-                print("Detectado ataque de tipo:", mapping[prediction.item()])
-                print(f"Dados do ataque:\n IP de origem- {network_info[index][0]}\n IP de destino- {network_info[index][1]}\n Porta de origem- {network_info[index][2]}\n Porta de destino- {network_info[index][3]}\n Protocolo- {network_info[index][4]}\n")
+                print(network_info[index][0]+","+network_info[index][1]+","+network_info[index][2]+","+network_info[index][3]+","+network_info[index][4]+","+mapping[prediction.item()])
 
     except pd.errors.EmptyDataError:
         print("Error: The CSV file is empty or has no valid data.")
